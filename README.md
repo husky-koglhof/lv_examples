@@ -1,6 +1,3 @@
-# Online Demo
-<p id=output><canvas height=320 id=canvas width=800></canvas><script>var Module={print:function(){},printErr:function(n){},canvas:document.getElementById("canvas")}</script><script async src=lvgl.js></script>
-  
 # Examples for Littlev Graphics Library
 
 LittlevGL is a free and open-source graphics library providing everything you need to create a Graphical User Interface (GUI) on embedded systems with easy-to-use graphical elements, beautiful visual effects and low memory footprint.
