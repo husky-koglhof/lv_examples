@@ -58,8 +58,10 @@ int8_t getRSSI(int id)
     return _ssidEnc[id];
 }
 
-int scanComplete() {
-	return 10;
+// set _scanCount to -5 to simulate "no networks found"
+int16_t _scanCount = 10;
+int16_t scanComplete() {
+	return _scanCount++;
 }
 
 wifi_auth_mode_t getEncryptionType(int id) {
@@ -67,7 +69,7 @@ wifi_auth_mode_t getEncryptionType(int id) {
 }
 
 char * getWiFiStatusText() {
-	return "Connected";
+	return "Actual WiFi";
 }
 
 wl_status_t getWiFiStatus() {

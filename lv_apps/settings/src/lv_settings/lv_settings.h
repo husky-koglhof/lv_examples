@@ -61,6 +61,7 @@ typedef struct {
 /**********************
  * GLOBAL PROTOTYPES
  **********************/
+static lv_obj_t * kb;
 char * lv_get_text_from_keyboard();
 
 /**

@@ -57,7 +57,7 @@ typedef enum {
     WL_DISCONNECTED     = 6
 } wl_status_t;
 
-int scanComplete();
+int16_t scanComplete();
 char * getSSID(int id);
 int8_t getRSSI(int id);
 wifi_auth_mode_t getEncryptionType(int id);

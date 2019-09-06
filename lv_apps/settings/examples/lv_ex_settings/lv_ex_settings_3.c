@@ -74,6 +74,7 @@ typedef enum {
     WIFI_STATE = 0,
     WIFI_USE_AP,
     WIFI_SSID,
+    WIFI_AP_SSID,
     WIFI_PASS,
     WIFI_CONNECT_BUTTON,
 }wifi_item_t;
@@ -82,6 +83,7 @@ static lv_settings_item_t wifi_items[] = {
   {.type = LV_SETTINGS_TYPE_SW, .id = _WIFI, .name = "WiFi State", .value = "Disabled", .hidden = false},
   {.type = LV_SETTINGS_TYPE_SW, .id = _WIFI_AP, .name = "Use AP", .value = "Disabled", .hidden = true},
   {.type = LV_SETTINGS_TYPE_DDLIST, .id = _WIFI_SSID, .name = "SSID", .value = WIFI_SSID_DEFAULT, .hidden = true},
+  {.type = LV_SETTINGS_TYPE_TEXT, .id = _WIFI_AP_SSID, .name = "SSID", .value = WIFI_AP_DEFAULT, .hidden = true},
   {.type = LV_SETTINGS_TYPE_PASS, .id = _WIFI_PASS, .name = "Password", .value = WIFI_AP_PASS_DEFAULT, .hidden = true},
   {.type = LV_SETTINGS_TYPE_BTN, .id = _WIFI_BUTTON, .name = "Connect", .value = "Connect", .hidden = true},
   {.type = LV_SETTINGS_TYPE_INV, .id = _LAST},     //Mark the last item
@@ -157,20 +159,37 @@ char * get_password_from_config(char ssid[20]) {
   return "";
 }
 
-static void wifiHelper(lv_task_t * task) {
+// Make this tasks global available, so we can cancel it
+lv_task_t * t_networkScanner;
+lv_task_t * t_cancelNetworkScan;
+static void cancelNetworkScan(lv_task_t * task) {
+	LV_LOG_WARN("cancelNetworkScan");
+	if (t_networkScanner != NULL) {
+		LV_LOG_WARN("networkScanner Task is active, delete it");
+		lv_task_del(t_networkScanner);
+	}
+	if (t_cancelNetworkScan != NULL) {
+		LV_LOG_WARN("cancelNetworkScan Task is active, delete it");
+		lv_task_del(t_cancelNetworkScan);
+	}
+	lv_hide_preloader(500);
+}
+
+static void networkScanner(lv_task_t * task) {
 #ifdef USE_SIMULATOR
-  int count = scanComplete();
+	int16_t count = scanComplete();
 #else
-  int count = WiFi.scanComplete();
+  // Get actual count
+  int16_t count = WiFi.scanComplete();
 #endif
+  // if count == -1, scan is still running
   if (count >= 0) {
 	LV_LOG_WARN("scan done");
     char wifiString[200];
     if (count == 0) {
     	LV_LOG_WARN("no networks found");
     } else {
-      // LV_LOG_WARN(count);
-      LV_LOG_WARN(" networks found");
+      // Set default entries for ddlist
       sprintf(wifiString, "%s", WIFI_SSID_DEFAULT);
       /* Clean out all ssid_items from list */
       for (int32_t i = 0; i < SSID_LIST_SIZE; i++) {
@@ -181,6 +200,8 @@ static void wifiHelper(lv_task_t * task) {
 
       for (int32_t i = 0; i < count; ++i) {
         // Print SSID and RSSI for each network found
+    	// e.g. One (-64)\nTwo (-32)*
+    	// <SSID_NAME> (-<RSSI>)<SECURE_MODE>
 #ifdef USE_SIMULATOR
         sprintf(wifiString, "%s%s (%d)%s\n", wifiString, getSSID(i), getRSSI(i), (getEncryptionType(i) == WIFI_AUTH_OPEN) ? " " : "*");
 #else
@@ -207,25 +228,34 @@ static void wifiHelper(lv_task_t * task) {
       lv_settings_item_t * item;
       item = &wifi_items[WIFI_SSID]; // _WIFI_SSID
 
+      // Set actual ddlist entries
+      // and select first entry "Search..."
       item->value = wifiString;
       item->state = 0;
-      // lv_settings_item_t * user_data = (lv_settings_item_t*)task->user_data;
       lv_settings_refr(ssidList);
 
-      for (int32_t i = 0; i < SSID_LIST_SIZE; i++) {
-        lv_ssid_item_t * ssid_item = &ssid_items[i];
-        if (ssid_item->valid == true) {
-          printf("ssid = %s, pass = %s, secure = %s\n", ssid_item->ssid, ssid_item->pass, ssid_item->secure ? "Yes": "No");
-        }
-      }
+      // Print out all entries
+//      for (int32_t i = 0; i < SSID_LIST_SIZE; i++) {
+//        lv_ssid_item_t * ssid_item = &ssid_items[i];
+//        if (ssid_item->valid == true) {
+//          printf("ssid = %s, pass = %s, secure = %s\n", ssid_item->ssid, ssid_item->pass, ssid_item->secure ? "Yes": "No");
+//        }
+//      }
     }
 
+    // Delete this task as it is no longer needed
+    LV_LOG_WARN("Delete Task t_networkScanner");
     lv_task_del(task);
+    LV_LOG_WARN("Delete Task t_cancelNetworkScan");
+  	lv_task_del(t_cancelNetworkScan);
+    // Hide Preloader in 500ms cause we've found some entries
     lv_hide_preloader(500);
   }
 }
 
 static int32_t wifiCount = 0;
+static char * wifiPass = "";
+
 static void wifiConnect(lv_task_t * task) {
   wifiCount++;
   bool cancelScan = false;
@@ -248,14 +278,17 @@ static void wifiConnect(lv_task_t * task) {
       cancelScan = true;
       text = "Connected";
 
+      lv_settings_item_t * item = &wifi_items[WIFI_CONNECT_BUTTON];
+      item->value = "Disconnect";
+
       char * ssid = (char *)task->user_data;
 
       // Get Password from keyboard
-      char * pass = lv_get_text_from_keyboard();
-      printf("---> Password from keyboard = '%s'\n", pass);
+      // char * pass = lv_get_text_from_keyboard();
+      printf("---> Password from keyboard = '%s'\n", wifiPass);
       // If nothing is entered, get password from config
-      if (strcmp(pass, "") == 0) {
-        pass = get_password_from_config(ssid);
+      if (strcmp(wifiPass, "") == 0) {
+    	  wifiPass = get_password_from_config(ssid);
       }
 
       printf("searching for %s in ssid_items\n", ssid);
@@ -265,8 +298,8 @@ static void wifiConnect(lv_task_t * task) {
 
         if (ssid_item->valid == true && strcmp(ssid, ssid_item->ssid) == 0) {
           // ssid_item->pass = pass;
-          strcpy(ssid_item->pass, pass);
-          printf("Found valid wifi_item: ssid = %s, pass = %s\n", ssid, pass);
+          strcpy(ssid_item->pass, wifiPass);
+          printf("Found valid wifi_item: ssid = %s, pass = %s\n", ssid, wifiPass);
 
           // TODO: Save back valid item to config on filesystem
           write_config();
@@ -291,6 +324,8 @@ static void wifiConnect(lv_task_t * task) {
     lv_settings_refr(wifiConnectState);
   }
 }
+
+static lv_obj_t * keyboard;
 
   /* */
 /**********************
@@ -323,9 +358,12 @@ static void getSettings() {
 static char * _ssid;
 
 static void useAPMode(bool mode) {
+  printf("useAPMode called: %s\n", mode ? "True" : "False");
+  /* If we are in AP Mode we must change some items */
   if (mode == true) {
     lv_settings_item_t * item;
 
+    // Set AP label to enabled
     item = &wifi_items[WIFI_USE_AP];
     item->value = "Enabled";
     lv_settings_refr(item);
@@ -335,61 +373,81 @@ static void useAPMode(bool mode) {
     item->hidden = true;
     lv_settings_refr(item);
 
-    // Change type to text
-    item->type = LV_SETTINGS_TYPE_TEXT;
-    item->value = WIFI_AP_DEFAULT;
+    // show ap ssid text
+    item = &wifi_items[WIFI_AP_SSID];
     _ssid = WIFI_AP_DEFAULT;
+    item->value = WIFI_AP_DEFAULT;
     item->hidden = false;
-    lv_settings_add(item);
+    lv_settings_refr(item);
 
     // Hide Password in AP Mode
     item = &wifi_items[WIFI_PASS];
     item->hidden = true;
     lv_settings_refr(item);
 
-    // Change type to text
+    // Change password type to text
     item->type = LV_SETTINGS_TYPE_TEXT;
     item->value = WIFI_AP_PASS_DEFAULT;
     item->hidden = false;
-    lv_settings_add(item);
+    lv_settings_refr(item);
 
+    // Deactivate Connect button
+    // We do not register the overriden event handler, cause
+    // it is allowed to create an AP without a password
     item = &wifi_items[WIFI_CONNECT_BUTTON];
     item->name = "Deactivated";
     item->value = "Activate";
     item->hidden = false;
-    lv_settings_add(item);
+    lv_settings_refr(item);
 
+    lv_obj_t * btn = lv_obj_get_child(item->cont, NULL);
+	lv_btn_set_state(btn, LV_BTN_STATE_REL);
+
+    // for safety's sake, the keyboard is removed
     lv_hide_keyboard();
   } else {
-    lv_settings_item_t * item;
+	/* If we are in STA Mode we must change some items back from AP Mode */
+	lv_settings_item_t * item;
 
-    item = &wifi_items[WIFI_USE_AP];
+    // Set AP label to disabled
+	item = &wifi_items[WIFI_USE_AP];
     item->value = "Disabled";
     lv_settings_refr(item);
 
-    // Show ddlist in Client Mode
-    item = &wifi_items[WIFI_SSID];
+    // hide text in STA Mode
+    item = &wifi_items[WIFI_AP_SSID];
     item->hidden = true;
     lv_settings_refr(item);
 
-    // Change type to text
-    item->type = LV_SETTINGS_TYPE_DDLIST;
+    // show ddlist ssid
+    item = &wifi_items[WIFI_SSID];
     item->value = WIFI_SSID_DEFAULT;
     item->hidden = false;
     item->state = 0;
-    lv_settings_add(item);
+//    lv_settings_add(item);
+    lv_settings_refr(item);
 
     // Show Password in Client Mode
     item = &wifi_items[WIFI_PASS];
     item->hidden = true;
     lv_settings_refr(item);
 
-    // Change type to text
+    // Change password type to password
     item->type = LV_SETTINGS_TYPE_PASS;
     item->value = WIFI_AP_PASS_DEFAULT;
     item->hidden = true;
-    lv_settings_add(item);
+//    lv_settings_add(item);
+    lv_settings_refr(item);
 
+    // Activate Connect button
+    // Correct eventhander (the overriden one) is already registered
+    item = &wifi_items[WIFI_CONNECT_BUTTON];
+    item->name = "Deactivated";
+    item->value = "Activate";
+    item->hidden = true;
+    lv_settings_refr(item);
+
+    // for safety's sake, the keyboard is removed
     lv_hide_keyboard();
   }
 }
@@ -516,6 +574,202 @@ static void info_menu_event_cb(lv_obj_t * btn, lv_event_t e) {
   }
 }
 
+static void showHideWifiSettings(bool visible) {
+	lv_settings_item_t * act_item = (lv_settings_item_t *)lv_event_get_data();
+	printf("!!!! showHideWifiSettings: visible = %s\n", visible ? "Yes": "No");
+
+	if (visible) {
+	  _wifiEnabled = true; // Used for ARCS
+
+	  // Set Button Value to Activated
+	  lv_settings_item_t * item;
+	  act_item->value = "Activated";
+	  lv_settings_refr(act_item);
+
+	  // Show "Use AP" Switch
+	  item = &wifi_items[WIFI_USE_AP];
+	  item->hidden = false;
+	  // Set AP Mode explicit to disabled
+	  lv_obj_t * sw = lv_obj_get_child(item->cont, NULL);
+	  lv_sw_off(sw, LV_ANIM_OFF);
+	  // useAPMode(false);
+	  // TODO: Not working
+	  // item->state = false;
+	  lv_settings_refr(item);
+
+	  // Show "SSID" ddList
+	  item = &wifi_items[WIFI_SSID];
+	  item->hidden = false;
+      // TODO: Remove hardcoded
+      item->value = WIFI_SSID_DEFAULT;
+      item->state = 0;
+
+	  lv_settings_refr(item);
+
+	  // Hide "Password" text
+	  item = &wifi_items[WIFI_PASS];
+	  item->hidden = true;
+	  lv_settings_refr(item);
+
+	  // Hide "Connect" Button
+	  item = &wifi_items[WIFI_CONNECT_BUTTON];
+	  item->hidden = true;
+	  lv_settings_refr(item);
+	} else {
+	  _wifiEnabled = false; // Used for ARCS
+
+	  lv_settings_item_t * item;
+	  act_item->value = "Deactivated";
+	  lv_settings_refr(act_item);
+
+	  // Hide "Use AP" Switch
+	  item = &wifi_items[WIFI_USE_AP];
+	  item->hidden = true;
+	  lv_settings_refr(item);
+
+	  // Hide "SSID" ddList
+	  item = &wifi_items[WIFI_SSID];
+	  item->hidden = true;
+	  lv_settings_refr(item);
+
+	  // Hide "Password" text and clear
+	  item = &wifi_items[WIFI_PASS];
+	  item->hidden = true;
+	  item->value = "";
+	  lv_settings_refr(item);
+
+	  // Hide "Connect" Button
+	  item = &wifi_items[WIFI_CONNECT_BUTTON];
+	  item->hidden = true;
+	  lv_settings_refr(item);
+	}
+}
+
+/* Override methods */
+int8_t text_length = 0;
+static char * passwd = "";
+
+#if LV_USE_ANIMATION
+static void kb_hide_anim_end(lv_anim_t * a)
+{
+    lv_obj_del(a->var);
+    keyboard = NULL;
+}
+#endif
+
+static void keyboard_event_cb(lv_obj_t * event_kb, lv_event_t event)
+{
+	LV_LOG_WARN("###################################### keyboard_event_cb called");
+    /* Just call the regular event handler */
+    lv_kb_def_event_cb(event_kb, event);
+
+    // printf("EVENT: %d\n", event);
+    // printf("passwd = %s\n", passwd);
+    if (event == LV_EVENT_APPLY || event == LV_EVENT_DEFOCUSED) {
+        // Store new password
+        wifiPass = passwd;
+    } else if (event == LV_EVENT_CANCEL) {
+        // Clean out temp password
+        passwd = "";
+    }
+
+    if(event == LV_EVENT_APPLY || event == LV_EVENT_CANCEL || event == LV_EVENT_DEFOCUSED) {
+#if LV_USE_ANIMATION
+        lv_anim_t a;
+        a.var = keyboard;
+        a.start = lv_obj_get_y(keyboard);
+        a.end = LV_VER_RES;
+        a.exec_cb = (lv_anim_exec_xcb_t)lv_obj_set_y;
+        a.path_cb = lv_anim_path_linear;
+        a.ready_cb = kb_hide_anim_end;
+        a.act_time = 0;
+        a.time = 300;
+        a.playback = 0;
+        a.playback_pause = 0;
+        a.repeat = 0;
+        a.repeat_pause = 0;
+        lv_anim_create(&a);
+#else
+        lv_obj_del(keyboard);
+        keyboard = NULL;
+#endif
+        // printf("Password: %s\n", wifiPass);
+    }
+}
+
+static void pass_event_cb(lv_obj_t * ta, lv_event_t event) {
+    if(event == LV_EVENT_CLICKED) {
+        /* Focus on the clicked text area */
+        if(keyboard != NULL) {
+        	lv_kb_set_ta(keyboard, ta);
+        } else {
+            LV_LOG_ERROR("CREATE NEW KEYBOARD FROM pass_event_cb");
+        	lv_obj_t * parent = lv_obj_get_parent(lv_obj_get_parent(ta));
+
+        	keyboard = lv_kb_create(parent, NULL);
+            lv_obj_set_pos(keyboard, 5, 90);
+            lv_obj_set_event_cb(keyboard, keyboard_event_cb); /* Setting a custom event handler stops the keyboard from closing automatically */
+            lv_obj_set_size(keyboard, LV_HOR_RES - 10, 140);
+            lv_kb_set_ta(keyboard, ta); /* Focus it on one of the text areas to start */
+            lv_kb_set_cursor_manage(keyboard, true); /* Automatically show/hide cursors on text areas */
+
+ #if LV_USE_ANIMATION
+            lv_anim_t a;
+            a.var = keyboard;
+            a.start = LV_VER_RES;
+            a.end = lv_obj_get_y(keyboard);
+            a.exec_cb = (lv_anim_exec_xcb_t)lv_obj_set_y;
+            a.path_cb = lv_anim_path_linear;
+            a.ready_cb = NULL;
+            a.act_time = 0;
+            a.time = 300;
+            a.playback = 0;
+            a.playback_pause = 0;
+            a.repeat = 0;
+            a.repeat_pause = 0;
+            lv_anim_create(&a);
+#endif
+       }
+    } else if(event == LV_EVENT_INSERT) {
+        const char * str = lv_event_get_data();
+        printf("1 str: '%s'\n", str);
+        printf("2 val: %s\n", lv_ta_get_text(ta));
+        printf("3 str: %d\n", str[0]);
+        passwd = lv_ta_get_text(ta);
+        if(str[0] == '\n') {
+            lv_event_send(keyboard, LV_EVENT_APPLY, NULL);
+        } else if (str[0] == 127) { // Backspace
+        	text_length --;
+        } else {
+        	text_length ++;
+        }
+        /*
+         * Change Connect Button
+         * Active:   if more text_length > 0
+         * Inactive: if text_length == 0
+         *
+         */
+      	if (text_length > 0) {
+      		lv_settings_item_t * item;
+      		item = &wifi_items[WIFI_CONNECT_BUTTON];
+            item->hidden = false;
+            item->name = "Connect";
+
+            lv_obj_t * btn = lv_obj_get_child(item->cont, NULL);
+            lv_btn_set_state(btn, LV_BTN_STATE_REL);
+      	} else {
+      		lv_settings_item_t * item;
+      		item = &wifi_items[WIFI_CONNECT_BUTTON];
+            item->hidden = false;
+            item->name = "Disconnected";
+
+            lv_obj_t * btn = lv_obj_get_child(item->cont, NULL);
+            lv_btn_set_state(btn, LV_BTN_STATE_INA);
+      	}
+    }
+}
+/* Override methods */
+
 static void wifi_event_cb(lv_obj_t * btn, lv_event_t e) {
   (void)btn;  //Unused
 
@@ -526,31 +780,66 @@ static void wifi_event_cb(lv_obj_t * btn, lv_event_t e) {
     printf("wifi_event_cb: event = Refresh, id = %d, state = %d, value = %s, name = %s\n", act_item->id, act_item->state, act_item->value, act_item->name);
 
     if (act_item->id == _WIFI) {
-      // Only show first element if wifiEnabled == false
-      lv_settings_add(&wifi_items[WIFI_STATE]);
-      uint32_t i;
-      for(i = 1; wifi_items[i].type != LV_SETTINGS_TYPE_INV; i++) {
+      // Only show switch button, is configured as "hidden = false" in wifi_items
+      // for(i = 1; wifi_items[i].type != LV_SETTINGS_TYPE_INV; i++) {
+      for(int8_t i = 0; wifi_items[i].type != LV_SETTINGS_TYPE_INV; i++) {
         lv_settings_add(&wifi_items[i]);
       }
+
+      lv_settings_item_t * item = &wifi_items[WIFI_SSID];
+      // TODO: Remove hardcoded
+      item->value = WIFI_SSID_DEFAULT;
+      item->state = 0;
+
+      lv_settings_refr(item);
+
+      // Override default event handler for password
+      LV_LOG_WARN("---------> Override default event handler for password");
+      // If no entry, Connect button is "disabled"
+      // If entry, Connect button is "enabled" and event_handler is overriden
+      item = &wifi_items[WIFI_PASS];
+      // lv_obj_set_event_cb(lv_obj_get_child(item->cont, NULL), pass_event_cb);
+
+      lv_obj_t * name = lv_obj_get_child_back(item->cont, NULL);
+      lv_obj_t * value = lv_obj_get_child_back(item->cont, name);
+      lv_obj_set_event_cb(value, pass_event_cb);
+
+      lv_settings_refr(item);
     }
   } else if(e == LV_EVENT_VALUE_CHANGED) {
     printf("wifi_event_cb: event = Changed, id = %d, state = %d, value = %s, name = %s\n", act_item->id, act_item->state, act_item->value, act_item->name);
+
+    // If AP Mode is changed
     if (act_item->id == _WIFI_AP) {
       useAPMode(act_item->state); /* 0 = No, 1 = Yes*/
     } else if (act_item->id == _WIFI_SSID) {
       int index = act_item->state;
-      if (index == 1) { // 1 means "Search..."
-        lv_show_preloader();
+      if (index == 0) { // 0 means "Select..."
+    	  lv_settings_item_t * item;
+    	  // Hide "Connect" Button
+    	  item = &wifi_items[WIFI_CONNECT_BUTTON];
+    	  item->hidden = true;
+    	  lv_settings_refr(item);
+
+      } else if (index == 1) { // 1 means "Search..."
+        // Show Preloader while searching
+    	lv_show_preloader();
         LV_LOG_WARN("new scan started");
-        // WiFi.scanNetworks called async
 #ifdef USE_SIMULATOR
         scanNetworks();
 #else
+        // WiFi.scanNetworks called async
         WiFi.scanNetworks(true);
 #endif
+        // Workaround: set ssidList hardcoded
+        // so we can use it in networkScanner method
         ssidList = act_item;
-        lv_task_create(wifiHelper, 1000, LV_TASK_PRIO_HIGH, NULL);
-        // lv_settings_refr(act_item);
+        // call networkScanner (scan network)
+        t_networkScanner = lv_task_create(networkScanner, 1000, LV_TASK_PRIO_HIGH, NULL);
+        // Start a cancel NetworkScan Task after 5 secs
+        // Will be canceled from networkScanner Task if we found some networks
+        t_cancelNetworkScan = lv_task_create(cancelNetworkScan, 5000, LV_TASK_PRIO_HIGH, NULL);
+        // Both tasks will be canceled in cancelNetworkScan if we didn't find networks within 5 secs
       } else {
         lv_obj_t * ddlist = lv_obj_get_child(act_item->cont, NULL);
         int index = lv_ddlist_get_selected(ddlist);
@@ -577,10 +866,21 @@ static void wifi_event_cb(lv_obj_t * btn, lv_event_t e) {
         }
         lv_settings_refr(item);
 
+        printf("--------------------------> ...\n");
         /* Show Connect Button after change */
         item = &wifi_items[WIFI_CONNECT_BUTTON];
         item->hidden = false;
         item->name = "Disconnected";
+        item->value = "Connect";
+
+        if (wifiSecure) {
+			lv_obj_t * btn = lv_obj_get_child(item->cont, NULL);
+			lv_btn_set_state(btn, LV_BTN_STATE_INA);
+        } else {
+        	lv_obj_t * btn = lv_obj_get_child(item->cont, NULL);
+        	lv_btn_set_state(btn, LV_BTN_STATE_REL);
+        }
+        lv_settings_refr(item);
 #ifdef USE_SIMULATOR
         disconnectWiFi();
 #else
@@ -591,58 +891,55 @@ static void wifi_event_cb(lv_obj_t * btn, lv_event_t e) {
 
         lv_hide_keyboard();
       }
-    } else if (act_item->id == _WIFI && _wifiEnabled == false) {
-      _wifiEnabled = true;
-
-      lv_settings_item_t * item;
-      for(int8_t y = 1; y<3; y++) {
-      //  byte y = 2;
-        item = &wifi_items[y];
-        item->hidden = false;
-
-        lv_settings_refr(item);
-      }
-    } else if (act_item->id == _WIFI && _wifiEnabled == true) {
-      _wifiEnabled = false;
-
-      lv_settings_item_t * item;
-      for(int8_t y = 1; y<4; y++) {
-      //  byte y = 2;
-        item = &wifi_items[y];
-        item->hidden = true;
-
-        lv_settings_refr(item);
-      }
+    } else if (act_item->id == _WIFI && act_item->value == "Deactivated") {
+      showHideWifiSettings(true);
+    } else if (act_item->id == _WIFI && act_item->value == "Activated") {
+      showHideWifiSettings(false);
     }
   } else if(e == LV_EVENT_CLICKED) {
     printf("wifi_event_cb: event = Clicked, id = %d, state = %d, value = %s, name = %s\n", act_item->id, act_item->state, act_item->value, act_item->name);
     if (act_item->id == _WIFI_BUTTON) {
+      // TODO: Check if button is active or inactive
+    	lv_settings_item_t * item;
+	  item = &wifi_items[WIFI_CONNECT_BUTTON];
+	  lv_obj_t * btn = lv_obj_get_child(item->cont, NULL);
+	  lv_btn_state_t * btn_state = lv_btn_get_state(btn);
+
+	  if (btn_state == LV_BTN_STATE_INA) {
+      // if (act_item->value == "Connect" && act_item->name == "Disconnected") { // No password entered on a secure wifi, do nothing
+    	  LV_LOG_WARN("Nothing todo, button is disabled");
+    	  return;
+      } else if (act_item->value == "Disconnect" && act_item->name == "Connected") { // STA mode connected, try to disconnect from these wifi
+    	  LV_LOG_WARN("Disconnect from this wifi");
+      }
       wifiConnectState = &wifi_items[WIFI_CONNECT_BUTTON];
-      wifiConnectState->hidden = false;
-      if (act_item->value != "Activate") {
-        wifiConnectState->name = "Connecting...";
-      } else {
+
+      // Set correct text for button
+      if (strcmp(act_item->value, "Activate") == 0) { // AP Mode
         wifiConnectState->name = "Active";
+      } else if (act_item->value == "Disconnect" && act_item->name == "Connected") {
+    	wifiConnectState->name = "Disconnect...";
+      } else {
+        wifiConnectState->name = "Connecting...";
       }
       lv_settings_refr(wifiConnectState);
 
+      // Show preloader while connecting
       lv_show_preloader();
 
-      // Get Password from keyboard
-      char * pass = lv_get_text_from_keyboard();
-      _ssid = "arcs";
-      printf("---> Password from keyboard = '%s'\n", pass);
       printf("---> SSID = %s\n", _ssid);
+      printf("---> Password from keyboard = '%s'\n", wifiPass);
       // If nothing is entered, get password from config
-      if (strcmp(pass, "") == 0) {
-        pass = get_password_from_config(_ssid);
+      if (strcmp(wifiPass, "") == 0) {
+    	  wifiPass = get_password_from_config(_ssid);
+        printf("---> No Password from keyboard, get Password from config = '%s'\n", wifiPass);
       }
 
-      if (strcmp(act_item->value, "Activate") == 0) {
+      if (strcmp(act_item->value, "Activate") == 0) { // AP Mode
 #ifdef USE_SIMULATOR
-    	connectSoftAP(_ssid, pass);
+    	connectSoftAP(_ssid, wifiPass);
 #else
-        WiFi.softAP(_ssid, pass);
+        WiFi.softAP(_ssid, wifiPass);
 #endif
 
         wifiConnectState->value = "Deactivate";
@@ -663,6 +960,7 @@ static void wifi_event_cb(lv_obj_t * btn, lv_event_t e) {
         lv_hide_preloader(100);
       } else {
         // Set Mode explicit to station mode and disconnect actual connection
+    	  LV_LOG_WARN("---- STA MODE");
 #ifdef USE_SIMULATOR
     	disconnectWiFi();
 #else
@@ -670,9 +968,22 @@ static void wifi_event_cb(lv_obj_t * btn, lv_event_t e) {
         WiFi.disconnect();
         WiFi.begin(_ssid, pass);
 #endif
-        // lv_task_create(wifiConnect, 100, LV_TASK_PRIO_HIGH, NULL);
-        lv_task_create(wifiConnect, 100, LV_TASK_PRIO_HIGH, _ssid);
+        printf("########## value = %s, name = %s\n", act_item->value, act_item->name);
+        if (act_item->value == "Disconnect" && act_item->name == "Disconnect...") {
+        	LV_LOG_WARN("already disconnected, nothing todo");
+        	lv_hide_preloader(500);
+
+        	wifiConnectState->name = "Disconnected";
+            wifiConnectState->value = "Connect";
+            lv_settings_refr(wifiConnectState);
+        } else {
+        	LV_LOG_WARN("create task wifiConnect...");
+        	lv_task_create(wifiConnect, 100, LV_TASK_PRIO_HIGH, _ssid);
+        }
       }
+      LV_LOG_WARN("HERE WE ARE");
+      lv_hide_keyboard();
+
     }
   } else {
     printf("wifi_event_cb: event = Unknown, id = %d, state = %d, value = %s, name = %s\n", act_item->id, act_item->state, act_item->value, act_item->name);

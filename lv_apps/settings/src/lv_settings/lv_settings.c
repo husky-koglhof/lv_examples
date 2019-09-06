@@ -233,7 +233,7 @@ void lv_settings_refr(lv_settings_item_t * item)
 lv_obj_t * preload;
 void lv_show_preloader() {
   if(act_cont == NULL) return;
-  printf("lv_show_preloader called\n");
+  LV_LOG_WARN("lv_show_preloader called\n");
 
   menu_cont_ext_t * ext = lv_obj_get_ext_attr(act_cont);
   lv_obj_t * page = ext->menu_page;
@@ -279,7 +279,7 @@ void lv_show_preloader() {
 }
 
 void lv_hide_preloader(uint16_t delay) {
-  printf("lv_hide_preloader called\n");
+  LV_LOG_WARN("lv_hide_preloader called\n");
   lv_obj_del_async(lv_obj_get_parent(preload));
   lv_mbox_start_auto_close(preload, delay);
 }
@@ -409,6 +409,7 @@ static void add_btn(lv_obj_t * page, lv_settings_item_t * item)
     lv_obj_t * btn = lv_btn_create(cont, NULL);
     lv_btn_set_fit(btn, LV_FIT_TIGHT);
     lv_obj_set_event_cb(btn, btn_event_cb);
+
     if(group) lv_group_add_obj(group, btn);
 
     lv_obj_t * value = lv_label_create(btn, NULL);
@@ -517,7 +518,6 @@ static void add_numset(lv_obj_t * page, lv_settings_item_t * item)
 /* Needed for Passwords */
 static void kb_event_cb(lv_obj_t * event_kb, lv_event_t event);
 static void ta_event_cb(lv_obj_t * ta, lv_event_t event);
-static lv_obj_t * kb;
 
 #if LV_USE_ANIMATION
 static void kb_hide_anim_end(lv_anim_t * a)
@@ -527,26 +527,25 @@ static void kb_hide_anim_end(lv_anim_t * a)
 }
 #endif
 
-static char * passwd = "";
-static char * wifiPass;
+static char * temp_ta_text = "";
+static char * ta_text;
 
 static void kb_event_cb(lv_obj_t * event_kb, lv_event_t event)
 {
+	LV_LOG_WARN("kb_event_cb called");
     /* Just call the regular event handler */
     lv_kb_def_event_cb(event_kb, event);
 
-    // printf("EVENT: %d\n", event);
+    // printf("keyboard EVENT: %d\n", event);
     if (event == LV_EVENT_APPLY) {
-        // Store new password
-        // printf("Store new Password\n");
-        wifiPass = passwd;
+        // Store new text
+    	ta_text = temp_ta_text;
     } else if (event == LV_EVENT_CANCEL) {
-        // Clean out temp password
-        // printf("Clean out temp password\n");
-        passwd = "";
+        // Clean out temp text
+    	temp_ta_text = "";
     }
 
-    if(event == LV_EVENT_APPLY || event == LV_EVENT_CANCEL) {
+    if(event == LV_EVENT_APPLY || event == LV_EVENT_CANCEL || event == LV_EVENT_DEFOCUSED) {
 #if LV_USE_ANIMATION
         lv_anim_t a;
         a.var = kb;
@@ -566,7 +565,7 @@ static void kb_event_cb(lv_obj_t * event_kb, lv_event_t event)
         lv_obj_del(kb);
         kb = NULL;
 #endif
-        printf("Password: %s\n", wifiPass);
+        // printf("Text in TA: %s\n", ta_text);
     }
 }
 
@@ -578,7 +577,7 @@ static void ta_event_cb(lv_obj_t * ta, lv_event_t event)
             lv_kb_set_ta(kb, ta);
         } else {
             lv_obj_t * parent = lv_obj_get_parent(lv_obj_get_parent(ta));
-
+            LV_LOG_WARN("_-_-_-_-_-_-_ Create new keyboard\n");
             kb = lv_kb_create(parent, NULL);
             lv_obj_set_pos(kb, 5, 90);
             lv_obj_set_event_cb(kb, kb_event_cb); /* Setting a custom event handler stops the keyboard from closing automatically */
@@ -605,8 +604,9 @@ static void ta_event_cb(lv_obj_t * ta, lv_event_t event)
        }
     } else if(event == LV_EVENT_INSERT) {
         const char * str = lv_event_get_data();
-        // printf("Value: %s\n", lv_ta_get_text(ta));
-        passwd = lv_ta_get_text(ta);
+        // printf("1 str: '%s'\n", str);
+        // printf("2 val: %s\n", lv_ta_get_text(ta));
+        temp_ta_text = lv_ta_get_text(ta);
         if(str[0] == '\n') {
             lv_event_send(kb, LV_EVENT_APPLY, NULL);
         }
@@ -614,10 +614,11 @@ static void ta_event_cb(lv_obj_t * ta, lv_event_t event)
 }
 
 char * lv_get_text_from_keyboard() {
-    return passwd;
+    return temp_ta_text;
 }
 
 void lv_hide_keyboard() {
+	LV_LOG_WARN("lv_hide_keyboard called");
     lv_event_send(kb, LV_EVENT_APPLY, NULL);
 }
 
@@ -634,6 +635,7 @@ static void add_pass(lv_obj_t * page, lv_settings_item_t * item)
     lv_ta_set_text(pwd_ta, "");
     lv_ta_set_pwd_mode(pwd_ta, true);
     lv_ta_set_one_line(pwd_ta, true);
+    LV_LOG_WARN("####################### TODO: Override password handler\n");
     lv_obj_set_event_cb(pwd_ta, ta_event_cb);
 
     if(group) lv_group_add_obj(group, pwd_ta);
@@ -654,6 +656,7 @@ static void add_text(lv_obj_t * page, lv_settings_item_t * item)
     lv_ta_set_text(pwd_ta, item->value);
     lv_ta_set_pwd_mode(pwd_ta, false);
     lv_ta_set_one_line(pwd_ta, true);
+    LV_LOG_WARN("####################### TODO: Do not override text handler\n");
     lv_obj_set_event_cb(pwd_ta, ta_event_cb);
 
     if(group) lv_group_add_obj(group, pwd_ta);
