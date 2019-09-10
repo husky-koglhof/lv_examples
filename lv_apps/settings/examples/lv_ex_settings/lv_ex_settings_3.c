@@ -60,7 +60,9 @@ static lv_settings_item_t root_item = {
 
 static lv_settings_item_t main_menu_items[] = {
   {.type = LV_SETTINGS_TYPE_LIST_BTN, .id = _SYSTEM, .name="System", .value="WiFi", .hidden = false},
-  {.type = LV_SETTINGS_TYPE_LIST_BTN, .id = _INFO, .name="Info", .value="WiFi", .hidden = false},
+  /*{.type = LV_SETTINGS_TYPE_LIST_BTN, .id = _INFO, .name="Info", .value="WiFi", .hidden = false},*/
+  /*{.type = LV_SETTINGS_TYPE_LIST_BTN, .id = _DUALRATE, .name=(char*)"Dual-Rate", .value=(char*)"Throttle, Steering", .hidden = false},*/
+  /*{.type = LV_SETTINGS_TYPE_LIST_BTN, .id = _DISPLAY, .name=(char*)"Display", .value=(char*)"Menu, Slider, Buttons", .hidden = false},*/
   {.type = LV_SETTINGS_TYPE_INV, .id = _LAST},     //Mark the last item
 };
 
@@ -77,7 +79,13 @@ typedef enum {
     WIFI_AP_SSID,
     WIFI_PASS,
     WIFI_CONNECT_BUTTON,
+	WIFI_INFO,
 }wifi_item_t;
+
+static lv_settings_item_t display_items[] = {
+  {.type = LV_SETTINGS_TYPE_SW, .id = _USE_SLIDER, .name = "Use Slider", .value = "Enabled", .state = 1, .hidden = false},
+  {.type = LV_SETTINGS_TYPE_INV, .id = _LAST},     //Mark the last item
+};
 
 static lv_settings_item_t wifi_items[] = {
   {.type = LV_SETTINGS_TYPE_SW, .id = _WIFI, .name = "WiFi State", .value = "Disabled", .hidden = false},
@@ -86,6 +94,7 @@ static lv_settings_item_t wifi_items[] = {
   {.type = LV_SETTINGS_TYPE_TEXT, .id = _WIFI_AP_SSID, .name = "SSID", .value = WIFI_AP_DEFAULT, .hidden = true},
   {.type = LV_SETTINGS_TYPE_PASS, .id = _WIFI_PASS, .name = "Password", .value = WIFI_AP_PASS_DEFAULT, .hidden = true},
   {.type = LV_SETTINGS_TYPE_BTN, .id = _WIFI_BUTTON, .name = "Connect", .value = "Connect", .hidden = true},
+  {.type = LV_SETTINGS_TYPE_BTN, .id = _INFO_WIFI, .name="Show Information", .value="Show Information", .hidden = true},
   {.type = LV_SETTINGS_TYPE_INV, .id = _LAST},     //Mark the last item
 };
 
@@ -110,6 +119,22 @@ static lv_settings_item_t info_wifi_items[] = {
   {.type = LV_SETTINGS_TYPE_DESCR, .id = _NETMASK, .name = "Netmask", .value = "", .hidden = false},
   {.type = LV_SETTINGS_TYPE_DESCR, .id = _DNS, .name = "DNS", .value = "", .hidden = false},
   {.type = LV_SETTINGS_TYPE_DESCR, .id = _CLIENTNAME, .name = "Name", .value = "", .hidden = false},
+  {.type = LV_SETTINGS_TYPE_INV, .id = _LAST},     //Mark the last item
+};
+
+static char dr_throttle[5] = "100%";
+static char dr_steering[5] = "100%";
+typedef enum {
+	THROTTLE_SLIDER = 0,
+	THROTTLE_NUMSET,
+	STEERING_SLIDER,
+	STEERING_NUMSET
+}dr_item_t;
+static lv_settings_item_t dr_items[] = {
+  {.type = LV_SETTINGS_TYPE_SLIDER, .id = _DR_TH, .name = (char*)"Throttle", .value = dr_throttle, .state = 100, .hidden = false},
+  {.type = LV_SETTINGS_TYPE_NUMSET, .id = _DR_TH, .name = (char*)"Throttle", .value = dr_throttle, .state = 100, .hidden = true},
+  {.type = LV_SETTINGS_TYPE_SLIDER, .id = _DR_ST, .name = (char*)"Steering", .value = dr_steering, .state = 100, .hidden = false},
+  {.type = LV_SETTINGS_TYPE_NUMSET, .id = _DR_ST, .name = (char*)"Steering", .value = dr_steering, .state = 100, .hidden = true},
   {.type = LV_SETTINGS_TYPE_INV, .id = _LAST},     //Mark the last item
 };
 
@@ -277,8 +302,13 @@ static void wifiConnect(lv_task_t * task) {
 #endif
       cancelScan = true;
       text = "Connected";
+      printf("------------------------> CHANGING WIFI_INFO TO VISIBLE\n");
+      lv_settings_item_t * item;
+      item = &wifi_items[WIFI_INFO];
+      item->hidden = false;
+      lv_settings_refr(item);
 
-      lv_settings_item_t * item = &wifi_items[WIFI_CONNECT_BUTTON];
+      item = &wifi_items[WIFI_CONNECT_BUTTON];
       item->value = "Disconnect";
 
       char * ssid = (char *)task->user_data;
@@ -360,9 +390,13 @@ static char * _ssid;
 static void useAPMode(bool mode) {
   printf("useAPMode called: %s\n", mode ? "True" : "False");
   /* If we are in AP Mode we must change some items */
-  if (mode == true) {
-    lv_settings_item_t * item;
 
+  lv_settings_item_t * item = &wifi_items[WIFI_INFO];
+  item->hidden = true;
+  lv_settings_refr(item);
+  printf("--------------> REMOVE BUTTON\n");
+
+  if (mode == true) {
     // Set AP label to enabled
     item = &wifi_items[WIFI_USE_AP];
     item->value = "Enabled";
@@ -407,7 +441,6 @@ static void useAPMode(bool mode) {
     lv_hide_keyboard();
   } else {
 	/* If we are in STA Mode we must change some items back from AP Mode */
-	lv_settings_item_t * item;
 
     // Set AP label to disabled
 	item = &wifi_items[WIFI_USE_AP];
@@ -452,6 +485,59 @@ static void useAPMode(bool mode) {
   }
 }
 
+/* Helper function */
+char* subStr (char* input_string, char *separator, int segment_number) {
+  char *act, *sub, *ptr;
+  static char copy[100];
+  int i;
+
+  strcpy(copy, input_string);
+  for (i = 1, act = copy; i <= segment_number; i++, act = NULL) {
+    sub = strtok_r(act, separator, &ptr);
+    if (sub == NULL) break;
+  }
+  return sub;
+}
+/* Helper function */
+
+void settings_dr_event_cb(lv_obj_t * btn, lv_event_t e) {
+  (void)btn;  //Unused
+
+  //Get the caller item
+  lv_settings_item_t * act_item = (lv_settings_item_t *)lv_event_get_data();
+
+  if(e == LV_EVENT_REFRESH) {
+    printf("settings_dr_event_cb: event = Refresh, id = %d\n", act_item->id);
+    //Add the dr_items && epa_items
+    uint32_t i;
+    if (act_item->id == _DUALRATE) {
+      for(i = 0; dr_items[i].type != LV_SETTINGS_TYPE_INV; i++) {
+        lv_settings_add(&dr_items[i]);
+      }
+      // TODO: Change range to 100 cause only 100% are allowed
+      for(i = 0; dr_items[i].type != LV_SETTINGS_TYPE_INV; i++) {
+        if (dr_items[i].type == LV_SETTINGS_TYPE_SLIDER) {
+        	lv_settings_item_t * item = &dr_items[i];
+        	lv_obj_t * slider = lv_obj_get_child(item->cont, NULL);
+        	lv_slider_set_range(slider, 0, 100);
+        	lv_settings_refr(&dr_items[i]);
+        }
+      }
+    }
+  } else if(e == LV_EVENT_VALUE_CHANGED) {
+    printf("settings_dr_event_cb: event = Changed, id = %d, value = %s, state = %d, name = %s\n", act_item->id, act_item->value, act_item->state, act_item->name);
+    if(act_item->id == _DR_TH || act_item->id == _DR_ST) {
+      if (act_item->state > 100) act_item->state = 100;
+      if (act_item->state < 0) act_item->state = 0;
+      sprintf(act_item->value, "%d%%", act_item->state);
+      lv_settings_refr(act_item);
+      // TODO: Set state for slider and numset
+    }
+  } else if(e == LV_EVENT_CLICKED) {
+	printf("settings_dr_event_cb: event = Clicked, id = %d, value = %s, state = %d, name = %s\n", act_item->id, act_item->value, act_item->state, act_item->name);
+  }
+}
+
 static void root_event_cb(lv_obj_t * btn, lv_event_t e) {
     (void)btn;  //Unused
 
@@ -463,6 +549,57 @@ static void root_event_cb(lv_obj_t * btn, lv_event_t e) {
 
         lv_settings_open_page(act_item, main_menu_event_cb);
     }
+}
+
+static void display_event_cb(lv_obj_t * btn, lv_event_t e) {
+  (void)btn;  //Unused
+
+  //Get the caller item/
+  lv_settings_item_t * act_item = (lv_settings_item_t *)lv_event_get_data();
+  printf("display_event_cb: event = %d, id = %d\n", e, act_item->id);
+  if(e == LV_EVENT_REFRESH) {
+    if (act_item->id == _DISPLAY) {
+      uint32_t i;
+  	  for(i = 0; display_items[i].type != LV_SETTINGS_TYPE_INV; i++) {
+	    lv_settings_add(&display_items[i]);
+	  }
+    }
+  } else if(e == LV_EVENT_VALUE_CHANGED) {
+    printf("display_event_cb: event = Changed, id = %d, value = %s, state = %d, name = %s\n", act_item->id, act_item->value, act_item->state, act_item->name);
+	if (act_item->id == _USE_SLIDER) {
+	  // item with hidden == false has the correct value
+	  // we must set this value to the other one
+	  if (act_item->state == 0) {
+		act_item->value = "Disabled";
+
+		dr_items[THROTTLE_SLIDER].hidden = true;
+		dr_items[THROTTLE_NUMSET].hidden = false;
+		dr_items[THROTTLE_NUMSET].state = dr_items[THROTTLE_SLIDER].state;
+
+		dr_items[STEERING_SLIDER].hidden = true;
+		dr_items[STEERING_NUMSET].hidden = false;
+		dr_items[STEERING_NUMSET].state = dr_items[STEERING_SLIDER].state;
+	  } else {
+		act_item->value = "Enabled";
+
+		dr_items[THROTTLE_SLIDER].hidden = false;
+		dr_items[THROTTLE_NUMSET].hidden = true;
+		dr_items[THROTTLE_SLIDER].state = dr_items[THROTTLE_NUMSET].state;
+
+		dr_items[STEERING_SLIDER].hidden = false;
+		dr_items[STEERING_NUMSET].hidden = true;
+		dr_items[STEERING_NUMSET].state = dr_items[STEERING_SLIDER].state;
+	  }
+      // Set correct state for slider and numset
+	  lv_settings_refr(&dr_items[THROTTLE_SLIDER]);
+	  lv_settings_refr(&dr_items[THROTTLE_NUMSET]);
+
+	  lv_settings_refr(&dr_items[STEERING_SLIDER]);
+	  lv_settings_refr(&dr_items[STEERING_NUMSET]);
+
+	  lv_settings_refr(act_item);
+	}
+  }
 }
 
 static void main_menu_event_cb(lv_obj_t * btn, lv_event_t e) {
@@ -495,24 +632,13 @@ static void main_menu_event_cb(lv_obj_t * btn, lv_event_t e) {
       lv_settings_open_page(act_item, main_menu_event_cb);
     } else if (act_item->id == _INFO_WIFI) {
       lv_settings_open_page(act_item, info_menu_event_cb);
+    } else if (act_item->id == _DUALRATE) {
+      lv_settings_open_page(act_item, settings_dr_event_cb);
+    } else if (act_item->id == _DISPLAY) {
+      lv_settings_open_page(act_item, display_event_cb);
     }
   }
 }
-
-/* Helper function */
-char* subStr (char* input_string, char *separator, int segment_number) {
-  char *act, *sub, *ptr;
-  static char copy[100];
-  int i;
-
-  strcpy(copy, input_string);
-  for (i = 1, act = copy; i <= segment_number; i++, act = NULL) {
-    sub = strtok_r(act, separator, &ptr);
-    if (sub == NULL) break;
-  }
-  return sub;
-}
-/* Helper function */
 
 static void info_menu_event_cb(lv_obj_t * btn, lv_event_t e) {
   (void)btn;  //Unused
@@ -642,6 +768,11 @@ static void showHideWifiSettings(bool visible) {
 	  item = &wifi_items[WIFI_CONNECT_BUTTON];
 	  item->hidden = true;
 	  lv_settings_refr(item);
+
+      item = &wifi_items[WIFI_INFO];
+      item->hidden = true;
+      lv_settings_refr(item);
+      printf("--------------> REMOVE BUTTON\n");
 	}
 }
 
@@ -778,13 +909,80 @@ static void wifi_event_cb(lv_obj_t * btn, lv_event_t e) {
 
   if(e == LV_EVENT_REFRESH) {
     printf("wifi_event_cb: event = Refresh, id = %d, state = %d, value = %s, name = %s\n", act_item->id, act_item->state, act_item->value, act_item->name);
+    printf("info_menu_event_cb: event = Refresh, id = %d, state = %d, value = %s, name = %s\n", act_item->id, act_item->state, act_item->value, act_item->name);
+    if (act_item->id == _INFO_WIFI) {
+      lv_settings_item_t * item;
 
-    if (act_item->id == _WIFI) {
+      item = &info_wifi_items[SSID];
+#ifdef USE_SIMULATOR
+      item->value = getWiFiStatusText();
+#else
+      item->value = const_cast<char*>(WiFi.SSID().c_str());
+#endif
+      lv_settings_add(item);
+
+      item = &info_wifi_items[IP_ADDR];
+#ifdef USE_SIMULATOR
+      item->value = getLocalIP();
+#else
+      item->value = const_cast<char*>(WiFi.localIP().toString().c_str());
+#endif
+      lv_settings_add(item);
+
+      item = &info_wifi_items[GATEWAY];
+#ifdef USE_SIMULATOR
+      item->value = getGatewayIP();
+#else
+      item->value = const_cast<char*>(WiFi.gatewayIP().toString().c_str());
+#endif
+      lv_settings_add(item);
+
+      item = &info_wifi_items[NETMASK];
+#ifdef USE_SIMULATOR
+      item->value = getSubnetMask();
+#else
+      item->value = const_cast<char*>(WiFi.subnetMask().toString().c_str());
+#endif
+      lv_settings_add(item);
+
+      item = &info_wifi_items[DNS];
+#ifdef USE_SIMULATOR
+      item->value = getDNS();
+#else
+      item->value = const_cast<char*>(WiFi.dnsIP().toString().c_str());
+#endif
+      lv_settings_add(item);
+
+      item = &info_wifi_items[CLIENT_NAME];
+#ifdef USE_SIMULATOR
+      item->value = getHostName();
+#else
+      item->value = const_cast<char*>(WiFi.getHostname());
+#endif
+      lv_settings_add(item);
+    } else if (act_item->id == _WIFI) {
       // Only show switch button, is configured as "hidden = false" in wifi_items
       // for(i = 1; wifi_items[i].type != LV_SETTINGS_TYPE_INV; i++) {
       for(int8_t i = 0; wifi_items[i].type != LV_SETTINGS_TYPE_INV; i++) {
         lv_settings_add(&wifi_items[i]);
       }
+      printf("Change WIFI_INFO BUTTON TO STYLE OF add_list_btn\n");
+
+      lv_settings_item_t * btn_item = &wifi_items[WIFI_INFO];
+      lv_obj_t * btn = lv_obj_get_child(btn_item->cont, NULL);
+
+      lv_btn_set_layout(btn, LV_LAYOUT_COL_L);
+      lv_btn_set_fit2(btn, LV_FIT_FLOOD, LV_FIT_TIGHT);
+      lv_page_glue_obj(btn, true);
+
+      lv_theme_t * th = lv_theme_get_current();
+      if(th) {
+          lv_btn_set_style(btn, LV_BTN_STYLE_REL, th->style.list.btn.rel);
+          lv_btn_set_style(btn, LV_BTN_STYLE_PR, th->style.list.btn.pr);
+          lv_label_set_style(btn, LV_LABEL_STYLE_MAIN, th->style.label.hint);
+      }
+
+      printf("!!!!!!!!!!!!!!!!!!!!!!! ADD ITEM\n");
 
       lv_settings_item_t * item = &wifi_items[WIFI_SSID];
       // TODO: Remove hardcoded
@@ -823,6 +1021,11 @@ static void wifi_event_cb(lv_obj_t * btn, lv_event_t e) {
 
       } else if (index == 1) { // 1 means "Search..."
         // Show Preloader while searching
+    	lv_settings_item_t * item = &wifi_items[WIFI_INFO];
+		item->hidden = true;
+		lv_settings_refr(item);
+		printf("--------------> REMOVE BUTTON\n");
+
     	lv_show_preloader();
         LV_LOG_WARN("new scan started");
 #ifdef USE_SIMULATOR
@@ -898,7 +1101,9 @@ static void wifi_event_cb(lv_obj_t * btn, lv_event_t e) {
     }
   } else if(e == LV_EVENT_CLICKED) {
     printf("wifi_event_cb: event = Clicked, id = %d, state = %d, value = %s, name = %s\n", act_item->id, act_item->state, act_item->value, act_item->name);
-    if (act_item->id == _WIFI_BUTTON) {
+    if (act_item->id == _INFO_WIFI) {
+      lv_settings_open_page(act_item, info_menu_event_cb);
+    } else if (act_item->id == _WIFI_BUTTON) {
       // TODO: Check if button is active or inactive
     	lv_settings_item_t * item;
 	  item = &wifi_items[WIFI_CONNECT_BUTTON];
@@ -911,6 +1116,10 @@ static void wifi_event_cb(lv_obj_t * btn, lv_event_t e) {
     	  return;
       } else if (act_item->value == "Disconnect" && act_item->name == "Connected") { // STA mode connected, try to disconnect from these wifi
     	  LV_LOG_WARN("Disconnect from this wifi");
+          item = &wifi_items[WIFI_INFO];
+          item->hidden = true;
+          lv_settings_refr(item);
+          printf("--------------> REMOVE BUTTON\n");
       }
       wifiConnectState = &wifi_items[WIFI_CONNECT_BUTTON];
 
@@ -946,6 +1155,11 @@ static void wifi_event_cb(lv_obj_t * btn, lv_event_t e) {
         lv_settings_refr(wifiConnectState);
 
         lv_hide_preloader(100);
+
+        item = &wifi_items[WIFI_INFO];
+        item->hidden = false;
+        lv_settings_refr(item);
+        printf("--------------> ADD BUTTON\n");
       } else if (strcmp(act_item->value, "Deactivate") == 0) {
 #ifdef USE_SIMULATOR
     	disconnectSoftAP();
@@ -956,6 +1170,11 @@ static void wifi_event_cb(lv_obj_t * btn, lv_event_t e) {
         wifiConnectState->name = "Deactivated";
         wifiConnectState->value = "Activate";
         lv_settings_refr(wifiConnectState);
+
+        item = &wifi_items[WIFI_INFO];
+        item->hidden = true;
+        lv_settings_refr(item);
+        printf("--------------> REMOVE BUTTON\n");
 
         lv_hide_preloader(100);
       } else {
@@ -981,12 +1200,10 @@ static void wifi_event_cb(lv_obj_t * btn, lv_event_t e) {
         	lv_task_create(wifiConnect, 100, LV_TASK_PRIO_HIGH, _ssid);
         }
       }
-      LV_LOG_WARN("HERE WE ARE");
       lv_hide_keyboard();
-
     }
   } else {
-    printf("wifi_event_cb: event = Unknown, id = %d, state = %d, value = %s, name = %s\n", act_item->id, act_item->state, act_item->value, act_item->name);
+    printf("wifi_event_cb: event = Unknown, event id = %d, id = %d, state = %d, value = %s, name = %s\n", e, act_item->id, act_item->state, act_item->value, act_item->name);
   }
 }
 

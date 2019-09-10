@@ -191,15 +191,15 @@ void lv_settings_add(lv_settings_item_t * item)
 
 
     switch(item->type) {
-    case LV_SETTINGS_TYPE_LIST_BTN: add_list_btn(page, item); break;
-    case LV_SETTINGS_TYPE_BTN:      add_btn(page, item); break;
-    case LV_SETTINGS_TYPE_SLIDER:   add_slider(page, item); break;
-    case LV_SETTINGS_TYPE_SW:       add_sw(page, item); break;
-    case LV_SETTINGS_TYPE_DDLIST:   add_ddlist(page, item); break;
-    case LV_SETTINGS_TYPE_NUMSET:   add_numset(page, item); break;
-    case LV_SETTINGS_TYPE_PASS:     add_pass(page, item); break;
-    case LV_SETTINGS_TYPE_TEXT:     add_text(page, item); break;
-    case LV_SETTINGS_TYPE_DESCR:    add_description(page, item); break;
+    case LV_SETTINGS_TYPE_LIST_BTN: 		add_list_btn(page, item); break;
+    case LV_SETTINGS_TYPE_BTN:      		add_btn(page, item); break;
+    case LV_SETTINGS_TYPE_SLIDER:   		add_slider(page, item); break;
+    case LV_SETTINGS_TYPE_SW:       		add_sw(page, item); break;
+    case LV_SETTINGS_TYPE_DDLIST:   		add_ddlist(page, item); break;
+    case LV_SETTINGS_TYPE_NUMSET:   		add_numset(page, item); break;
+    case LV_SETTINGS_TYPE_PASS:     		add_pass(page, item); break;
+    case LV_SETTINGS_TYPE_TEXT:     		add_text(page, item); break;
+    case LV_SETTINGS_TYPE_DESCR:    		add_description(page, item); break;
     default: break;
     }
 }
@@ -211,18 +211,21 @@ void lv_settings_add(lv_settings_item_t * item)
 void lv_settings_refr(lv_settings_item_t * item)
 {
     /*Return if there is nothing to refresh*/
-    if(item->cont == NULL) return;
+    if(item->cont == NULL) {
+    	printf("-----------> lv_settings_refr: item->cont == NULL\n");
+   		return;
+    }
 
     switch(item->type) {
-    case LV_SETTINGS_TYPE_LIST_BTN: refr_list_btn(item); break;
-    case LV_SETTINGS_TYPE_BTN:      refr_btn(item); break;
-    case LV_SETTINGS_TYPE_SLIDER:   refr_slider(item); break;
-    case LV_SETTINGS_TYPE_SW:       refr_sw(item); break;
-    case LV_SETTINGS_TYPE_DDLIST:   refr_ddlist(item); break;
-    case LV_SETTINGS_TYPE_NUMSET:   refr_numset(item); break;
-    case LV_SETTINGS_TYPE_PASS:     refr_pass(item); break;
-    case LV_SETTINGS_TYPE_TEXT:     refr_text(item); break;
-    case LV_SETTINGS_TYPE_DESCR:    refr_description(item); break;
+    case LV_SETTINGS_TYPE_LIST_BTN: 		refr_list_btn(item); break;
+    case LV_SETTINGS_TYPE_BTN:      		refr_btn(item); break;
+    case LV_SETTINGS_TYPE_SLIDER:   		refr_slider(item); break;
+    case LV_SETTINGS_TYPE_SW:       		refr_sw(item); break;
+    case LV_SETTINGS_TYPE_DDLIST:   		refr_ddlist(item); break;
+    case LV_SETTINGS_TYPE_NUMSET:   		refr_numset(item); break;
+    case LV_SETTINGS_TYPE_PASS:     		refr_pass(item); break;
+    case LV_SETTINGS_TYPE_TEXT:     		refr_text(item); break;
+    case LV_SETTINGS_TYPE_DESCR:    		refr_description(item); break;
     default: break;
     }
 }
@@ -367,7 +370,7 @@ static void create_page(lv_settings_item_t * parent_item, lv_event_cb_t event_cb
  */
 static void add_list_btn(lv_obj_t * page, lv_settings_item_t * item)
 {
-    lv_obj_t * liste = lv_btn_create(page, NULL);
+	lv_obj_t * liste = lv_btn_create(page, NULL);
     lv_btn_set_layout(liste, LV_LAYOUT_COL_L);
     lv_btn_set_fit2(liste, LV_FIT_FLOOD, LV_FIT_TIGHT);
     lv_page_glue_obj(liste, true);
@@ -392,7 +395,6 @@ static void add_list_btn(lv_obj_t * page, lv_settings_item_t * item)
 
     lv_obj_set_hidden(liste, item->hidden);
 }
-
 
 /**
  * Create a button. Write `item->name` on create a button on the right with `item->value` text.
@@ -480,41 +482,6 @@ static void add_ddlist(lv_obj_t * page, lv_settings_item_t * item)
     lv_obj_set_hidden(cont, item->hidden);
 }
 
-/**
- * Create a drop down list with `item->name` title and `item->value` options. The `item->state` option will be selected.
- * @param page pointer to a menu page created by `lv_settings_create_page`
- * @param item pointer to a an `lv_settings_item_t` item.
- */
-static void add_numset(lv_obj_t * page, lv_settings_item_t * item)
-{
-    lv_obj_t * cont = item_cont_create(page, item);
-    lv_cont_set_layout(cont, LV_LAYOUT_PRETTY);
-
-    lv_obj_t * label = lv_label_create(cont, NULL);
-    lv_label_set_text(label, item->name);
-    lv_obj_set_protect(label, LV_PROTECT_FOLLOW);
-
-
-    lv_obj_t * btn_dec = lv_btn_create(cont, NULL);
-    lv_obj_set_size(btn_dec, LV_DPI / 2, LV_DPI / 2);
-    lv_obj_set_event_cb(btn_dec, numset_event_cb);
-    if(group) lv_group_add_obj(group, btn_dec);
-
-    label = lv_label_create(btn_dec, NULL);
-    lv_label_set_text(label, LV_SYMBOL_MINUS);
-
-    label = lv_label_create(cont, NULL);
-    lv_label_set_text(label, item->value);
-
-    lv_obj_t * btn_inc = lv_btn_create(cont, btn_dec);
-    lv_obj_set_size(btn_inc, LV_DPI / 2, LV_DPI / 2);
-    if(group) lv_group_add_obj(group, btn_inc);
-
-    label = lv_label_create(btn_inc, NULL);
-    lv_label_set_text(label, LV_SYMBOL_PLUS);
-
-    lv_obj_set_hidden(cont, item->hidden);
-}
 /* Needed for Passwords */
 static void kb_event_cb(lv_obj_t * event_kb, lv_event_t event);
 static void ta_event_cb(lv_obj_t * ta, lv_event_t event);
@@ -715,6 +682,45 @@ static void add_slider(lv_obj_t * page, lv_settings_item_t * item)
     lv_obj_set_hidden(cont, item->hidden);
 }
 
+/**
+ * Create a drop down list with `item->name` title and `item->value` options. The `item->state` option will be selected.
+ * @param page pointer to a menu page created by `lv_settings_create_page`
+ * @param item pointer to a an `lv_settings_item_t` item.
+ */
+static void add_numset(lv_obj_t * page, lv_settings_item_t * item)
+{
+    lv_obj_t * cont = item_cont_create(page, item);
+    lv_cont_set_layout(cont, LV_LAYOUT_PRETTY);
+
+    lv_obj_t * label = lv_label_create(cont, NULL);
+    lv_label_set_text(label, item->name);
+    lv_obj_set_protect(label, LV_PROTECT_FOLLOW);
+
+    // Button -
+    lv_obj_t * btn_dec = lv_btn_create(cont, NULL);
+    lv_obj_set_size(btn_dec, LV_DPI / 2, LV_DPI / 2);
+    lv_obj_set_event_cb(btn_dec, numset_event_cb);
+    if(group) lv_group_add_obj(group, btn_dec);
+
+    label = lv_label_create(btn_dec, NULL);
+    lv_label_set_text(label, LV_SYMBOL_MINUS);
+
+    // Value
+    label = lv_label_create(cont, NULL);
+    lv_label_set_text(label, item->value);
+
+    // Button +
+    lv_obj_t * btn_inc = lv_btn_create(cont, btn_dec);
+    lv_obj_set_size(btn_inc, LV_DPI / 2, LV_DPI / 2);
+    if(group) lv_group_add_obj(group, btn_inc);
+
+    label = lv_label_create(btn_inc, NULL);
+    lv_label_set_text(label, LV_SYMBOL_PLUS);
+
+    // Hidden
+    lv_obj_set_hidden(cont, item->hidden);
+}
+
 static void refr_list_btn(lv_settings_item_t * item)
 {
     lv_obj_t * name = lv_obj_get_child(item->cont, NULL);
@@ -722,7 +728,6 @@ static void refr_list_btn(lv_settings_item_t * item)
 
     lv_label_set_text(name, item->name);
     lv_label_set_text(value, item->value);
-
     lv_obj_set_hidden(item->cont, item->hidden);
 }
 

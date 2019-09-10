@@ -1,8 +1,12 @@
 #ifndef _LV_EX_SETTINGS_3_H
 #define _LV_EX_SETTINGS_3_H
 
+#define _DUALRATE    0
+#define _DR_TH       1
+#define _DR_ST       2
 #define _SYSTEM      16
 #define _WIFI        24
+#define _DISPLAY     27
 #define _INFO        30
 
 #define _WIFI_AP     100
@@ -18,6 +22,8 @@
 #define _NETMASK            113
 #define _DNS                114
 #define _CLIENTNAME         115
+
+#define _USE_SLIDER			230
 
 #define _ROOT        254
 #define _LAST        255
