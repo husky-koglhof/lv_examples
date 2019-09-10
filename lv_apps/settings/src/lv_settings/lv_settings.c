@@ -212,7 +212,7 @@ void lv_settings_refr(lv_settings_item_t * item)
 {
     /*Return if there is nothing to refresh*/
     if(item->cont == NULL) {
-    	printf("-----------> lv_settings_refr: item->cont == NULL\n");
+    	// printf("-----------> lv_settings_refr: item->cont == NULL\n");
    		return;
     }
 
